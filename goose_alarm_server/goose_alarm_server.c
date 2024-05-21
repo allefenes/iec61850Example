@@ -1,16 +1,10 @@
-/*
- * goose_alarm_server.c
- *
- * Example IED server for receiving SV messages and publishing GOOSE messages
- */
-
-#include "iec61850_server.h"
-#include "hal_thread.h"
-#include <signal.h>
+#include <signal.h> 
 #include <stdlib.h>
 #include <stdio.h>
 #include <time.h>
 
+#include "hal_thread.h"
+#include "iec61850_server.h"
 #include "static_model.h"
 #include "sv_subscriber.h"
 #include "goose_publisher.h"
@@ -29,7 +23,6 @@ static void goose_publish_v(float voltage) {
     LinkedList_add(dataSetValues, MmsValue_newVisibleString("Voltage Overshoot"));
     LinkedList_add(dataSetValues, MmsValue_newFloat(voltage));
     
-    /* Publish GOOSE message with current and voltage */
     GoosePublisher_publish(publisher, dataSetValues);
 
     LinkedList_destroyDeep(dataSetValues, (LinkedListValueDeleteFunction) MmsValue_delete);
@@ -41,8 +34,8 @@ static void goose_publish_c(float current){
     LinkedList_add(dataSetValues, MmsValue_newFloat(current));
     
     GoosePublisher_publish(publisher, dataSetValues);
-    LinkedList_destroyDeep(dataSetValues, (LinkedListValueDeleteFunction) MmsValue_delete);
 
+    LinkedList_destroyDeep(dataSetValues, (LinkedListValueDeleteFunction) MmsValue_delete);
 }
 
 static void sv_update_listener(SVSubscriber subscriber, void* parameter, SVSubscriber_ASDU asdu)
@@ -54,22 +47,20 @@ static void sv_update_listener(SVSubscriber subscriber, void* parameter, SVSubsc
 
     if (strcmp(svID, "RandomCurrent") == 0) {
         if (SVSubscriber_ASDU_getDataSize(asdu) >= 4) {
-            float current = SVSubscriber_ASDU_getFLOAT32(asdu, 0); // First FLOAT32 value at byte position 0
+            float current = SVSubscriber_ASDU_getFLOAT32(asdu, 0);
             printf("Received SV (Current): current=%f\n", current);
 
-            /* Check conditions and publish GOOSE message if conditions are met */
             if (current > 1100.0) {
                 printf("Current exceeded threshold. Publishing GOOSE message.\n");
-                goose_publish_c(current); // Voltage is not applicable here
+                goose_publish_c(current);
             }
         }
     }
     else if (strcmp(svID, "RandomVoltage") == 0) {
         if (SVSubscriber_ASDU_getDataSize(asdu) >= 4) {
-            float voltage = SVSubscriber_ASDU_getFLOAT32(asdu, 0); // First FLOAT32 value at byte position 0
+            float voltage = SVSubscriber_ASDU_getFLOAT32(asdu, 0);
             printf("Received SV (Voltage): voltage=%f\n", voltage);
 
-            /* Check conditions and publish GOOSE message if conditions are met */
             if (voltage > 380.0) {
                 printf("Voltage exceeded threshold. Publishing GOOSE message.\n");
                 goose_publish_v(voltage); // Current is not applicable here
@@ -90,7 +81,6 @@ int main(int argc, char** argv)
         tcpPort = atoi(argv[1]);
     }
 
-    /* Create and configure the GOOSE publisher */
     CommParameters gooseCommParameters;
     gooseCommParameters.appId = 1000;
     gooseCommParameters.vlanId = 0;
@@ -114,7 +104,6 @@ int main(int argc, char** argv)
         return -1;
     }
 
-    /* Create SV receiver and subscribers */
     SVReceiver receiver = SVReceiver_create();
 
     if (argc > 2) {
@@ -125,20 +114,16 @@ int main(int argc, char** argv)
         SVReceiver_setInterfaceId(receiver, "eth0");
     }
 
-    /* Create SV subscriber for amper */
-    SVSubscriber subscriber_amper = SVSubscriber_create(NULL, 0x4000);
-    SVSubscriber_setListener(subscriber_amper, sv_update_listener, NULL);
+    SVSubscriber subscriber_amper = SVSubscriber_create(NULL, 0x4000); //NULL : Default Solve Function, 0x4000 : Unique Subscriber Id
+    SVSubscriber_setListener(subscriber_amper, sv_update_listener, NULL); // NULL : User Id
     SVReceiver_addSubscriber(receiver, subscriber_amper);
 
-    /* Create SV subscriber for voltage */
     SVSubscriber subscriber_voltage = SVSubscriber_create(NULL, 0x4001);
     SVSubscriber_setListener(subscriber_voltage, sv_update_listener, NULL);
     SVReceiver_addSubscriber(receiver, subscriber_voltage);
 
-    /* Start the SV receiver */
     SVReceiver_start(receiver);
 
-    /* MMS server will be instructed to start listening to client connections. */
     IedServer_start(iedServer, tcpPort);
 
     if (!IedServer_isRunning(iedServer)) {
@@ -155,13 +140,10 @@ int main(int argc, char** argv)
         Thread_sleep(100);
     }
 
-    /* stop MMS server - close TCP server socket and all client sockets */
     IedServer_stop(iedServer);
 
-    /* Stop listening to SV messages */
     SVReceiver_stop(receiver);
 
-    /* Cleanup - free all resources */
     IedServer_destroy(iedServer);
     GoosePublisher_destroy(publisher);
     SVReceiver_destroy(receiver);
